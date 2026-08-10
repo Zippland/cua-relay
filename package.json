@@ -1,0 +1,66 @@
+{
+  "name": "cua-relay",
+  "version": "0.1.0",
+  "description": "A local MCP compatibility bridge for the official Codex Computer Use runtime.",
+  "type": "module",
+  "bin": {
+    "cua-relay": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "docs",
+    "claude-mcp.example.json",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "postbuild": "node scripts/mark-cli-executable.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/test/**/*.test.js",
+    "prepack": "npm run build",
+    "pack:check": "node scripts/check-package.mjs",
+    "privacy:check": "node scripts/privacy-check.mjs",
+    "docs:check": "node scripts/check-docs.mjs"
+  },
+  "keywords": [
+    "codex",
+    "computer-use",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "gemini-cli",
+    "kimi-cli",
+    "macos"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "darwin"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zippland/cua-relay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Zippland/cua-relay/issues"
+  },
+  "homepage": "https://github.com/Zippland/cua-relay#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

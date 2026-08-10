@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cua-relay": {
+      "type": "stdio",
+      "command": "cua-relay",
+      "args": [
+        "serve"
+      ]
+    }
+  }
+}
