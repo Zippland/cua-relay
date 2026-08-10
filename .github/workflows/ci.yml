@@ -21,7 +21,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # Linux runs only the fake-backend suite; the published package remains macOS-only.
       - run: npm ci --ignore-scripts
+        env:
+          npm_config_force: ${{ runner.os == 'Linux' }}
       - run: npm run check
       - run: npm test
       - run: npm run docs:check
