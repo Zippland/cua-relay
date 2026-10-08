@@ -87,8 +87,12 @@ cua-relay doctor
 ```
 
 `doctor` 会检查受支持的 macOS 安装布局，并验证 Codex app-server 与 Computer
-Use client 是否由预期的 OpenAI Team ID 签名。Screen Recording 和
-Accessibility 权限需要通过 `get_app_state` 和交互调用确认。
+Use client 是否由预期的 OpenAI Team ID 签名。优先使用签名的
+`Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`，同时兼容旧版
+`Resources/codex`。不使用未签名的 `codex-cli/bin/codex` 启动器。
+优先路径存在但路径或签名验证失败时直接报错，不回退。
+`doctor --json` 会报告所选 `codexPath` 和 `codexLayout`。
+Screen Recording 和 Accessibility 权限需要通过 `get_app_state` 和交互调用确认。
 
 输出机器可读的诊断：
 

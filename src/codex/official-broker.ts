@@ -8,7 +8,7 @@
  */
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -18,7 +18,9 @@ import {
 	type OfficialToolArguments,
 } from "./tool-contract.js";
 
-export const CODEX_PATH = "/Applications/ChatGPT.app/Contents/Resources/codex";
+const CHATGPT_RESOURCES_ROOT = "/Applications/ChatGPT.app/Contents/Resources";
+export const CODEX_PATH = path.join(CHATGPT_RESOURCES_ROOT, "codex");
+export const CURRENT_CODEX_PATH = path.join(CHATGPT_RESOURCES_ROOT, "codex-cli", "CodexCLI.app", "Contents", "MacOS", "codex");
 export const COMPUTER_USE_PLUGIN_ROOT =
 	"/Applications/ChatGPT.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use";
 const COMPUTER_USE_APP_RELATIVE_PATH = "computer-use/Codex Computer Use.app";
@@ -157,6 +159,49 @@ interface ResolveOfficialComputerUseClientOptions {
 	runSync?: RunSync;
 }
 
+export interface OfficialCodexBroker {
+	brokerPath: string;
+	layout: "nested-codex-cli" | "legacy-resource-binary";
+}
+
+interface ResolveOfficialCodexBrokerOptions {
+	/** Test-only resource-root override. Production session creation never sets this. */
+	resourcesRoot?: string;
+	runSync?: RunSync;
+}
+
+/** Resolve only reviewed signed executables, never the unsigned codex-cli/bin wrapper. */
+export function resolveOfficialCodexBroker(options: ResolveOfficialCodexBrokerOptions = {}): OfficialCodexBroker {
+	const runSync = options.runSync ?? productionRunSync;
+	const resourcesRoot = options.resourcesRoot ?? CHATGPT_RESOURCES_ROOT;
+	const candidates: Array<[string, OfficialCodexBroker["layout"]]> = [
+		[path.join(resourcesRoot, "codex-cli", "CodexCLI.app", "Contents", "MacOS", "codex"), "nested-codex-cli"],
+		[path.join(resourcesRoot, "codex"), "legacy-resource-binary"],
+	];
+	for (const [candidate, layout] of candidates) {
+		try {
+			lstatSync(candidate);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+			throw new BrokerVerificationError("Could not inspect the official Codex broker path");
+		}
+		let canonicalRoot: string;
+		let canonicalBroker: string;
+		try {
+			canonicalRoot = realpathSync(resourcesRoot);
+			canonicalBroker = realpathSync(candidate);
+		} catch {
+			throw new BrokerVerificationError("Could not resolve the official Codex broker path");
+		}
+		if (canonicalRoot !== path.resolve(resourcesRoot) || canonicalBroker !== path.resolve(candidate) || !canonicalBroker.startsWith(`${canonicalRoot}${path.sep}`)) {
+			throw new BrokerVerificationError("Official Codex broker path was not canonical");
+		}
+		verifySignedBinary(canonicalBroker, runSync);
+		return { brokerPath: canonicalBroker, layout };
+	}
+	throw new BrokerVerificationError(`Official Codex broker was not found in a supported location: ${candidates.map(([candidate]) => candidate).join("; ")}`);
+}
+
 function checkedCandidate(appPath: string, clientPath: string, layout: OfficialComputerUseClient["layout"], runSync: RunSync): OfficialComputerUseClient | undefined {
 	if (!existsSync(clientPath)) return undefined;
 	let canonicalApp: string;
@@ -199,19 +244,20 @@ function clientBuild(appPath: string, runSync: RunSync): string {
 	return (result.stdout ?? "").toString().trim();
 }
 
-export function verifyOfficialDirectBroker(options: ResolveOfficialComputerUseClientOptions = {}): {
+export function verifyOfficialDirectBroker(options: ResolveOfficialComputerUseClientOptions & ResolveOfficialCodexBrokerOptions = {}): {
 	brokerVersion: string;
 	clientBuild: string;
 	client: OfficialComputerUseClient;
+	broker: OfficialCodexBroker;
 } {
 	const runSync = options.runSync ?? productionRunSync;
-	verifySignedBinary(CODEX_PATH, runSync);
+	const broker = resolveOfficialCodexBroker({ ...options, runSync });
 	const client = resolveOfficialComputerUseClient({ ...options, runSync });
-	const version = runSync(CODEX_PATH, ["--version"]);
+	const version = runSync(broker.brokerPath, ["--version"]);
 	if (version.status !== 0 || !/^codex-cli\s+\d+\./.test((version.stdout ?? "").toString().trim())) {
 		throw new BrokerVerificationError("Could not verify the app-bundled Codex app-server version");
 	}
-	return { brokerVersion: (version.stdout ?? "").toString().trim(), clientBuild: clientBuild(client.appPath, runSync), client };
+	return { brokerVersion: (version.stdout ?? "").toString().trim(), clientBuild: clientBuild(client.appPath, runSync), client, broker };
 }
 
 function buildBrokerEnv(codexHome: string, tempRoot: string): NodeJS.ProcessEnv {
@@ -533,7 +579,7 @@ export async function createOfficialDirectToolSession(
 	options: DirectBrokerOptions = {},
 ): Promise<OfficialDirectToolSession> {
 	const verification = options.skipSignatureVerification
-		? { brokerVersion: "test-app-server", clientBuild: "test-client", client: undefined }
+		? { brokerVersion: "test-app-server", clientBuild: "test-client", client: undefined, broker: undefined }
 		: verifyOfficialDirectBroker();
 	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "cua-relay."));
 	const codexHome = path.join(tempRoot, "codex-home");
@@ -635,7 +681,7 @@ export async function createOfficialDirectToolSession(
 
 	try {
 		if (options.signal?.aborted) throw new Error("Direct Computer Use request cancelled");
-		const command = options.appServerCommand ?? CODEX_PATH;
+		const command = options.appServerCommand ?? verification.broker!.brokerPath;
 		const commandArgs = options.appServerArgs ?? buildDirectAppServerArgs(workDir, verification.client!.clientPath);
 		proc = spawn(command, commandArgs, {
 			cwd: workDir,

@@ -98,6 +98,11 @@ cua-relay doctor
 
 `doctor` checks the supported macOS layout and verifies that the Codex
 app-server and Computer Use client are signed by the expected OpenAI Team ID.
+It prefers the signed `Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`
+executable and also supports the legacy `Resources/codex` layout. The unsigned
+`codex-cli/bin/codex` launcher is not supported. If a present preferred executable
+fails path or signature verification, the relay fails closed instead of falling
+back. `doctor --json` reports the selected `codexPath` and `codexLayout`.
 Screen Recording and Accessibility can only be proven by a real tool call.
 
 For machine-readable diagnostics:
